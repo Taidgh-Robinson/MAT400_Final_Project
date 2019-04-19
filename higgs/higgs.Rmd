@@ -1,0 +1,34 @@
+---
+title: "HIGGS"
+output: html_document
+---
+
+## Load libraries
+
+```{r}
+library(glmnet)
+library(modelr)
+library(tidyverse)
+```
+
+## Parse dataset
+
+```{r}
+higgs <- read.csv("../data/higgs.csv")
+head(higgs)
+```
+
+## Split into train/test sets
+
+```{r}
+rp <- resample_partition(higgs, c(train = 0.7, test = 0.3))
+
+train_set <- as_tibble(rp$train)
+test_set <- as_tibble(rp$test)
+```
+
+## Feature selection
+
+```{r}
+
+```

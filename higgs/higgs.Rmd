@@ -14,7 +14,7 @@ library(tidyverse)
 ## Parse dataset
 
 ```{r}
-higgs <- read.csv("../data/higgs.csv")
+higgs <- read.csv("../data/higgs.csv") %>% subset(select = -X)
 head(higgs)
 ```
 
@@ -30,5 +30,5 @@ test_set <- as_tibble(rp$test)
 ## Feature selection
 
 ```{r}
-
+fit <- glmnet()
 ```

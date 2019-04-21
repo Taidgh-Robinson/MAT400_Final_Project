@@ -30,5 +30,9 @@ test_set <- as_tibble(rp$test)
 ## Feature selection
 
 ```{r}
-fit <- glmnet()
+x <- model.matrix(signal ~ ., data = train)
+y <- train$signal
+en_fit <- cv.glmnet(x, y, alpha = 0.5)
+
+coef(en_fit, s = "lambda.min")
 ```

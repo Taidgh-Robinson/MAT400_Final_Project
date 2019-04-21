@@ -35,8 +35,8 @@ head(higgs)
 ```{r}
 rp <- resample_partition(higgs, c(train = 0.7, test = 0.3))
 
-train_set <- as_tibble(rp$train)
-test_set <- as_tibble(rp$test)
+train <- as_tibble(rp$train)
+test <- as_tibble(rp$test)
 ```
 
 ## Feature selection
@@ -50,3 +50,12 @@ en_fit <- cv.glmnet(x, y, alpha = 0.5)
 
 coef(en_fit, s = "lambda.min")
 ```
+
+## Preliminary model fitting
+
+### Logistic Regression
+
+```{r}
+
+```
+

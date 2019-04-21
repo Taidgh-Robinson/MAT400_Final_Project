@@ -15,6 +15,7 @@ library(glmnet)
 library(modelr)
 library(tidymodels)
 library(tidyverse)
+library(MASS)
 
 set.seed(0)
 ```
@@ -67,4 +68,34 @@ train_glm <- train %>%
 train_glm %>% count(signal, pred.signal) %>% spread(signal, n)
 autoplot(roc_curve(train_glm, as.factor(signal), prob))
 ```
+
+
+### GAM 
+
+```{r} 
+library(gam)
+gam_fit <- gam(signal ~ s(lepton.pT) + s(lepton.eta) + s(lepton.phi)+ s(missing.energy.magnitude)+ s(missing.energy.phi)+ s(jet.1.pt)+ s(jet.1.eta)+ s(jet.1.phi) + s(jet.2.pt)+ s(jet.2.eta)+ s(jet.2.phi)+s(jet.3.pt)+ s(jet.3.eta)+ s(jet.3.phi)+s(jet.4.pt)+ s(jet.4.eta)+ s(m_jj)+s(m_jjj)+ s(m_lv)+ s(m_jlv)+ s(m_bb)+ s(m_wbb) + s(m_wwbb), data = train)
+
+summary(gam_fit)
+predict(gam_fit, test)
+plot(gam_fit, se = TRUE)
+
+```
+
+### LDA
+
+```{r}
+
+lda_fit <- lda(signal ~ . - jet.3.eta - jet.4.eta, data = train)
+
+test$signal 
+pred <- predict(lda_fit, test)$class
+mean((as.numeric(test$signal) - as.numeric(pred))^2)
+
+```
+
+
+
+
+
 

@@ -7,12 +7,16 @@ output: html_document
 
   glmnet used for feature selection.
   modelr used for data splitting.
+  tidymodels used for roc curve.
   tidyverse used for tibble.
 
 ```{r}
 library(glmnet)
 library(modelr)
+library(tidymodels)
 library(tidyverse)
+
+set.seed(0)
 ```
 
 ## Parse dataset
@@ -41,7 +45,7 @@ test <- as_tibble(rp$test)
 
 ## Feature selection
 
-  All but "jet.4.eta" are important variables.
+  All but "jet.3.eta" and "jet.4.eta" are important variables.
 
 ```{r}
 x <- model.matrix(signal ~ ., data = train)
@@ -56,6 +60,11 @@ coef(en_fit, s = "lambda.min")
 ### Logistic Regression
 
 ```{r}
-
+glm_fit <- glm(signal ~ . - jet.3.eta - jet.4.eta, data = train, family = binomial)
+train_glm <- train %>% 
+    add_predictions(glm_fit) %>% 
+    mutate(prob = exp(pred)/ (1 + exp(pred)), pred.signal = ifelse(prob > 0.5, 1, 0))
+train_glm %>% count(signal, pred.signal) %>% spread(signal, n)
+autoplot(roc_curve(train_glm, as.factor(signal), prob))
 ```
 

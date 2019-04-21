@@ -5,10 +5,10 @@ output: html_document
 
 ## Load libraries
 
-  glmnet used for feature selection.
-  modelr used for data splitting.
-  tidymodels used for roc curve.
-  tidyverse used for tibble.
+	glmnet used for feature selection.
+	modelr used for data splitting.
+	tidymodels used for roc curve.
+	tidyverse used for tibble.
 
 ```{r}
 library(glmnet)
@@ -16,26 +16,34 @@ library(modelr)
 library(tidymodels)
 library(tidyverse)
 library(MASS)
+library(gam)
+library(tree)
+library(randomForest)
+library(gbm)
+library(e1071)
+library(caret)
 
 set.seed(0)
 ```
 
 ## Parse dataset
 
-  Data is stored in csv file.
-  
-  Loads all rows of csv file,
-  without X column (which just stores row index)
+	Data is stored in csv file.
+	
+	Loads all rows of csv file,
+	without X column (which just stores row index)
 
 ```{r}
 higgs <- read.csv("../data/higgs.csv") %>% subset(select = -X)
+higgs <- higgs[1:10000,]
+higgs$signal <- as.factor(higgs$signal)
 head(higgs)
 ```
 
 ## Split into train/test sets
 
-  Train set is 70% of data.
-  Test set is 30% of data.
+	Train set is 70% of data.
+	Test set is 30% of data.
 
 ```{r}
 rp <- resample_partition(higgs, c(train = 0.7, test = 0.3))
@@ -46,14 +54,24 @@ test <- as_tibble(rp$test)
 
 ## Feature selection
 
-  All but "jet.3.eta" and "jet.4.eta" are important variables.
+	All but "lepton.phi", "jet.1.eta", and "jet.4.eta" are important variables.
 
 ```{r}
 x <- model.matrix(signal ~ ., data = train)
 y <- train$signal
-en_fit <- cv.glmnet(x, y, alpha = 0.5)
+lasso_fit <- cv.glmnet(x, y, alpha = 1, family = "binomial")
 
-coef(en_fit, s = "lambda.min")
+coef(lasso_fit, s = "lambda.min")
+```
+
+## Data Viz
+```{r}
+higgs_viz <- higgs
+higgs_viz$signal <- as.numeric(higgs_viz$signal)
+cor_matrix <- cor(higgs_viz, use = "complete.obs")
+cor_matrix
+col<- colorRampPalette(c("blue", "white", "red"))(20)
+heatmap(x = cor_matrix, col = col, symm = TRUE)
 ```
 
 ## Preliminary model fitting
@@ -61,41 +79,79 @@ coef(en_fit, s = "lambda.min")
 ### Logistic Regression
 
 ```{r}
-glm_fit <- glm(signal ~ . - jet.3.eta - jet.4.eta, data = train, family = binomial)
-train_glm <- train %>% 
-    add_predictions(glm_fit) %>% 
-    mutate(prob = exp(pred)/ (1 + exp(pred)), pred.signal = ifelse(prob > 0.5, 1, 0))
-train_glm %>% count(signal, pred.signal) %>% spread(signal, n)
-autoplot(roc_curve(train_glm, as.factor(signal), prob))
+glm_fit <- glm(signal ~ . - lepton.phi - jet.1.eta - jet.4.eta, data = train, family = binomial)
+test_glm <- test %>% add_predictions(glm_fit) %>% mutate(prob = exp(pred) / (1 + exp(pred)), pred.signal = ifelse(prob > 0.5, 1, 0))
+
+test_glm %>% count(signal, pred.signal) %>% spread(signal, n)
+autoplot(roc_curve(test_glm, as.factor(signal), prob))
+mean(test_glm$signal != test_glm$pred.signal)
+summary(glm_fit)
 ```
 
 
 ### GAM 
 
 ```{r} 
-library(gam)
-gam_fit <- gam(signal ~ s(lepton.pT) + s(lepton.eta) + s(lepton.phi)+ s(missing.energy.magnitude)+ s(missing.energy.phi)+ s(jet.1.pt)+ s(jet.1.eta)+ s(jet.1.phi) + s(jet.2.pt)+ s(jet.2.eta)+ s(jet.2.phi)+s(jet.3.pt)+ s(jet.3.eta)+ s(jet.3.phi)+s(jet.4.pt)+ s(jet.4.eta)+ s(m_jj)+s(m_jjj)+ s(m_lv)+ s(m_jlv)+ s(m_bb)+ s(m_wbb) + s(m_wwbb), data = train)
+gam_fit <- gam(signal ~ s(lepton.pT) + s(lepton.eta) + s(missing.energy.magnitude) + s(missing.energy.phi) + s(jet.1.pt) + s(jet.1.eta) + s(jet.1.phi) + s(jet.2.pt) + s(jet.2.eta) + s(jet.2.phi) + s(jet.3.pt) + s(jet.3.phi) + s(jet.4.pt) + s(m_jj) + s(m_jjj) + s(m_lv) + s(m_jlv) + s(m_bb) + s(m_wbb) + s(m_wwbb), data = train)
 
-summary(gam_fit)
-predict(gam_fit, test)
+predict(gam_fit, data = test)
+
 plot(gam_fit, se = TRUE)
-
+summary(gam_fit)  
 ```
 
 ### LDA
 
 ```{r}
+lda_fit <- lda(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
 
-lda_fit <- lda(signal ~ . - jet.3.eta - jet.4.eta, data = train)
+mean(test$signal != predict(lda_fit, test)$class)
+```
 
-test$signal 
-pred <- predict(lda_fit, test)$class
-mean((as.numeric(test$signal) - as.numeric(pred))^2)
+### Classification Tree
+
+```{r}
+tree_fit <- tree(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
+
+summary(tree_fit)
+
+plot(tree_fit, type = "uniform")
+text(tree_fit, pretty = 1, all = TRUE, cex = 0.7)
+
+mean(test$signal != (test %>% add_predictions(tree_fit, type = "class"))$pred)
+```
+
+### Random Forest
+```{r}
+rf_fit <- randomForest(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train, importance = TRUE)
+
+predict(rf_fit, data = test)
+
+importance(rf_fit)
+varImpPlot(rf_fit)
+```
+
+### Gradient Boosting
+```{r}
+model <- train(
+  signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train, method = "xgbTree",
+  trControl = trainControl("cv", number = 10)
+  )
 
 ```
 
+### naive bayes 
 
+```{r}
+nb <- naiveBayes(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
+pred <- predict(nb, test, type = "class")
+mean(test$signal != pred)
 
+```
 
+### SVM
 
-
+```{r}
+svm_fit <- svm(signal ~ ., data = train, kernel = "linear", cost = 10, scale = FALSE)
+plot(svmfit, dat)
+```

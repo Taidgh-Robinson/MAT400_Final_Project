@@ -5,6 +5,10 @@ output: html_document
 
 ## Load libraries
 
+  glmnet used for feature selection.
+  modelr used for data splitting.
+  tidyverse used for tibble.
+
 ```{r}
 library(glmnet)
 library(modelr)
@@ -13,12 +17,20 @@ library(tidyverse)
 
 ## Parse dataset
 
+  Data is stored in csv file.
+  
+  Loads all rows of csv file,
+  without X column (which just stores row index)
+
 ```{r}
 higgs <- read.csv("../data/higgs.csv") %>% subset(select = -X)
 head(higgs)
 ```
 
 ## Split into train/test sets
+
+  Train set is 70% of data.
+  Test set is 30% of data.
 
 ```{r}
 rp <- resample_partition(higgs, c(train = 0.7, test = 0.3))
@@ -28,6 +40,8 @@ test_set <- as_tibble(rp$test)
 ```
 
 ## Feature selection
+
+  All but "jet.4.eta" are important variables.
 
 ```{r}
 x <- model.matrix(signal ~ ., data = train)

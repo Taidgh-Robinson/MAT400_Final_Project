@@ -1,5 +1,5 @@
 ---
-title: "HIGGS"
+title: "Higgs Boson Particle Prediction"
 output: html_document
 ---
 
@@ -9,6 +9,12 @@ output: html_document
 	modelr used for data splitting.
 	tidymodels used for roc curve.
 	tidyverse used for tibble.
+	MASS is used for lda.
+	tree used for classification trees.
+	randomForest used for random forests.
+	gbm used for gradient boosting.
+	e1071 used for support vector machines.
+	caret used for gradient boosting.
 
 ```{r}
 library(glmnet)
@@ -16,22 +22,42 @@ library(modelr)
 library(tidymodels)
 library(tidyverse)
 library(MASS)
-# library(gam)
 library(tree)
 library(randomForest)
 library(gbm)
 library(e1071)
 library(caret)
+library(gam)
 
 set.seed(0)
 ```
 
+# Introduction - Higgs Boson
+
+	We present ourselves with a binary classification problem.
+
+	The goal is to determine if a process is a signal which produces a Higgs Boson particle,
+	or background which does not produce a Higgs Boson particle through statistical models. 
+
+	Data was randomly selected from 11 million rows of data, condensed into 10,000 rows.
+
+# Exploration / Visualization
+
 ## Parse dataset
 
 	Data is stored in csv file.
-	
+
 	Loads all rows of csv file,
 	without X column (which just stores row index)
+
+	11 Million rows of data, each with 28 features; this was filtered down to 10,000 randomly selected rows.
+	Data was randomly generated using Monte Carlo simulations.
+
+	Column 1 specifies signal or background, columns 2-22 specify kinematic properties,
+	columns 23-28 are functions of columns 2-22
+
+	Dataset provided by the UCI machine learning repository
+	and can found here: https://archive.ics.uci.edu/ml/datasets/HIGGS
 
 ```{r}
 higgs <- read.csv("../data/higgs.csv") %>% subset(select = -X)
@@ -39,6 +65,56 @@ higgs <- higgs[1:10000,]
 higgs$signal <- as.factor(higgs$signal)
 head(higgs)
 ```
+
+## Correlation Matrix
+
+	Shows how well correlated variables are to each other.
+	"m_bb" is most correlated to "signal", which follows in
+	analysis below.
+
+```{r}
+higgs_viz <- higgs
+higgs_viz$signal <- as.numeric(higgs_viz$signal)
+cor_matrix <- cor(higgs_viz, use = "complete.obs")
+cor_matrix
+col <- colorRampPalette(c("blue", "white", "red"))(20)
+heatmap(x = cor_matrix, col = col, symm = TRUE)
+```
+
+## Response Proportion
+
+  Discover the proportion of that data where signal is 1 and 0.
+  5295 trues -> 0.5295.
+  4705 falses -> 0.4705.
+  
+  Thus, the data is relatively evenly split and the models'
+  misclassification rates can be trusted.
+
+```{r}
+trues <- nrow(subset(higgs, signal == 1))
+falses <- nrow(subset(higgs, signal == 0))
+
+trues / nrow(higgs)
+falses / nrow(higgs)
+```
+
+## Feature Averages
+
+	Calculate the averages for each predictor in both the trues and the false signals.
+	This is to check to see if there is a large difference between the average values and help find valuable predictors.
+	
+	Resulting from this, it appears a fair amount of variables are in the same scale and are similar in magnitude.
+
+```{r}
+trues <- subset(higgs, signal == 1)
+falses <- subset(higgs, signal == 0)
+find.numeric <- sapply(trues, is.numeric)
+colMeans(trues[, find.numeric])
+find.numeric <- sapply(falses, is.numeric)
+colMeans(falses[, find.numeric])
+```
+
+# Analysis
 
 ## Split into train/test sets
 
@@ -53,6 +129,11 @@ test <- as_tibble(rp$test)
 ```
 
 ## Feature selection
+  
+	Dimensionality Reduction performed to gather the most important variables.
+	Elastic Net does not penalize any variables to 0.
+	Lasso, on the other hand, penalizes "lepton.phi", "jet.1.eta", and "jet.4.eta" to 0.
+	Thus, we can safely assume that these variables are not important to model the data accurately.
 
 	All but "lepton.phi", "jet.1.eta", and "jet.4.eta" are important variables.
 
@@ -64,19 +145,11 @@ lasso_fit <- cv.glmnet(x, y, alpha = 1, family = "binomial")
 coef(lasso_fit, s = "lambda.min")
 ```
 
-## Data Viz
-```{r}
-higgs_viz <- higgs
-higgs_viz$signal <- as.numeric(higgs_viz$signal)
-cor_matrix <- cor(higgs_viz, use = "complete.obs")
-cor_matrix
-col<- colorRampPalette(c("blue", "white", "red"))(20)
-heatmap(x = cor_matrix, col = col, symm = TRUE)
-```
-
-## Preliminary model fitting
+## Models
 
 ### Logistic Regression
+
+    Misclassification rate of 0.3685438.
 
 ```{r}
 glm_fit <- glm(signal ~ . - lepton.phi - jet.1.eta - jet.4.eta, data = train, family = binomial)
@@ -88,19 +161,27 @@ mean(test_glm$signal != test_glm$pred.signal)
 summary(glm_fit)
 ```
 
+### GAM
 
-### GAM 
+    Misclassification rate of 0.3225591.
 
-```{r} 
-gam_fit <- mgcv::gam(signal ~ s(lepton.pT) + s(lepton.eta) + s(missing.energy.magnitude) + s(missing.energy.phi) + s(jet.1.pt) + s(jet.1.eta) + s(jet.1.phi) + s(jet.2.pt) + s(jet.2.eta) + s(jet.2.phi) + s(jet.3.pt) + s(jet.3.phi) + s(jet.4.pt) + s(m_jj) + s(m_jjj) + s(m_lv) + s(m_jlv) + s(m_bb) + s(m_wbb) + s(m_wwbb), data = train)
+```{r}
+gam_fit <- gam::gam(signal ~ s(lepton.pT) + s(lepton.eta) + s(missing.energy.magnitude) + s(missing.energy.phi) + s(jet.1.pt) + s(jet.1.eta) + s(jet.1.phi) + s(jet.2.pt) + s(jet.2.eta) + s(jet.2.phi) + s(jet.3.pt) + s(jet.3.phi) + s(jet.4.pt) + s(m_jj) + s(m_jjj) + s(m_lv) + s(m_jlv) + s(m_bb) + s(m_wbb) + s(m_wwbb), family=binomial(), data = train)
 
-predict(gam_fit, data = test)
+test_gam <- test %>% add_predictions(gam_fit) %>% mutate(prob = exp(pred) / (1 + exp(pred)), pred.signal = ifelse(prob > 0.5, 1, 0))
+test_gam %>% count(signal, pred.signal) %>% spread(signal, n)
+
+mean(test_gam$signal != test_gam$pred.signal)
 
 plot(gam_fit, se = TRUE)
-summary(gam_fit)  
+summary(gam_fit)
 ```
 
 ### LDA
+
+    Similar to Logistic Regression.
+    Misclassification rate of 0.3675442.
+    Means that data is probably not so normally distributed.
 
 ```{r}
 lda_fit <- lda(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
@@ -109,6 +190,9 @@ mean(test$signal != predict(lda_fit, test)$class)
 ```
 
 ### Classification Tree
+
+    Basic CART tree to perform classification.
+    Misclassification rate of 0.3795402.
 
 ```{r}
 tree_fit <- tree(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
@@ -122,6 +206,11 @@ mean(test$signal != (test %>% add_predictions(tree_fit, type = "class"))$pred)
 ```
 
 ### Random Forest
+
+    Standard Random Forest implementation.
+    Misclassification rate of 0.3042319.
+    Most important variable, “m_bb”, follows from Gini Index and also from Correlation Matrix.
+
 ```{r}
 rf_fit <- randomForest(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train, importance = TRUE)
 
@@ -132,29 +221,54 @@ varImpPlot(rf_fit)
 ```
 
 ### Gradient Boosting
+
+    Had misclassification rate of 0.2869044.
+
 ```{r}
 model <- train(
-  signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train, method = "xgbTree",
+  signal ~ ., data = train, method = "xgbTree",
   trControl = trainControl("cv", number = 10)
-)
+  )
+# best tuning parameter
+model$bestTune
 
+predicted.classes <- model %>% predict(test)
+
+# misclassification rate
+mean(predicted.classes != test$signal)
 ```
 
-### Naive Bayes 
+### Naive Bayes
+
+    Standard Naive Bayes implementation for probabilistic classifiers.
+    Misclassification rate of 0.4028657.
 
 ```{r}
 nb <- naiveBayes(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train)
 pred <- predict(nb, test, type = "class")
 mean(test$signal != pred)
-
 ```
 
 ### SVM
+
+    Misclassification rate of 0.3348884.e
 
 ```{r}
 svm_fit <- svm(signal ~ . - lepton.phi - jet.3.eta - jet.4.eta, data = train, kernel = "radial", cost = 10)
 
 mean(test$signal != (test %>% add_predictions(svm_fit, type = "class"))$pred)
 
-plot(svm_fit, data = svm_train, formula = m_bb ~ m_wwbb)
+plot(svm(signal ~ ., data = train, kernel = "radial", cost = 10), data = train, formula = m_bb ~ m_wwbb)
 ```
+
+# Conclusion
+
+	Through our testing we discovered that the best model for predicting this problem is extreme gradient boosting and the worst is Naive Bayes.
+
+	All of our models misclassification rates were within ~12% of each other with the lowest being ~ .28, and the highest being ~.4.
+
+	For some future work, we feel like we can use cross-validation for better model testing.
+
+	This could allow us to tune hyperparameters of models such as shrinkage and leaf nodes of trees.
+
+	Another interesting area of study for future work would be the use of Neural Nets, which are not statistical models but have shown promise with the problem. 
